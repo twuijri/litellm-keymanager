@@ -88,9 +88,27 @@ async def _find_key_record(client: LiteLLMClient, key: str) -> dict:
 async def list_keys(
     client: Annotated[LiteLLMClient, Depends(get_client)],
     page: int = Query(1, ge=1),
-    size: int = Query(100, ge=1, le=500),
+    size: int = Query(100, ge=1, le=100),
+    all: bool = Query(True),
 ):
-    return await client.list_keys(page=page, size=size, return_full_object=True)
+    if not all:
+        return await client.list_keys(page=page, size=size, return_full_object=True)
+
+    aggregated: list = []
+    current = 1
+    total_pages = 1
+    while current <= total_pages:
+        result = await client.list_keys(page=current, size=100, return_full_object=True)
+        if isinstance(result, dict):
+            aggregated.extend(result.get("keys", []))
+            total_pages = result.get("total_pages") or 1
+        elif isinstance(result, list):
+            aggregated.extend(result)
+            break
+        current += 1
+        if current > 100:
+            break
+    return {"keys": aggregated, "total_count": len(aggregated)}
 
 
 @router.get("/keys/{key}")

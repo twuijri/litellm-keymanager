@@ -61,7 +61,7 @@ export async function login(username, password) {
 
 export const api = {
   me: () => request("/auth/me"),
-  listKeys: (page = 1, size = 200) => request(`/api/keys?page=${page}&size=${size}`),
+  listKeys: () => request(`/api/keys`),
   getKey: (key) => request(`/api/keys/${encodeURIComponent(key)}`),
   updateKey: (payload) => request("/api/keys/update", { method: "POST", body: payload }),
   generateKey: (payload) => request("/api/keys/generate", { method: "POST", body: payload }),
