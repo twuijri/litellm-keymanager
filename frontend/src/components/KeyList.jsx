@@ -6,6 +6,13 @@ function shortKey(token) {
   return `${token.slice(0, 8)}…${token.slice(-4)}`;
 }
 
+function displayKey(record) {
+  // LiteLLM stores a friendly preview like "sk-...XXXX" in key_name; prefer it.
+  const preview = record?.key_name;
+  if (typeof preview === "string" && preview.startsWith("sk-")) return preview;
+  return shortKey(record?.token || record?.key_name || record?.key);
+}
+
 function FallbackBadge({ metadata }) {
   const fallbacks = metadata?.fallbacks;
   if (!Array.isArray(fallbacks) || fallbacks.length === 0) return null;
@@ -133,7 +140,7 @@ export default function KeyList({ keys, loading, query, setQuery, onSelect, onAc
                         <div className="text-xs text-ink-500">team: {k.team_alias}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-ink-300">{shortKey(id)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-ink-300">{displayKey(k)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {(k.models || []).slice(0, 4).map((m) => (
