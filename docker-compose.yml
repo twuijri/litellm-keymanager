@@ -7,6 +7,7 @@ services:
     environment:
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm_app:4000}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      DATABASE_URL: ${DATABASE_URL:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}

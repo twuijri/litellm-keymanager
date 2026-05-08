@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user
 from ..config import Settings, get_settings
 from ..litellm_client import LiteLLMClient
+from .. import db as db_mod
 
 router = APIRouter(prefix="/api", tags=["keys"], dependencies=[Depends(get_current_user)])
 
@@ -108,15 +109,71 @@ async def list_keys(
         current += 1
         if current > 100:
             break
+
+    # Merge metadata from DB so per-key fallbacks stored there surface in the list.
+    pool_check = await db_mod.get_pool(get_settings())
+    if pool_check:
+        for k in aggregated:
+            if not isinstance(k, dict):
+                continue
+            token = k.get("token") or k.get("key_name")
+            if not token:
+                continue
+            db_row = await db_mod.fetch_key_row(get_settings(), token)
+            if not db_row:
+                continue
+            db_metadata = db_row.get("metadata")
+            if isinstance(db_metadata, dict) and db_metadata:
+                k["metadata"] = {**(k.get("metadata") or {}), **db_metadata}
+
     return {"keys": aggregated, "total_count": len(aggregated)}
+
+
+async def _enrich_with_db(settings: Settings, record: dict) -> dict:
+    token = record.get("token") or record.get("key_name")
+    if not token:
+        return record
+    db_row = await db_mod.fetch_key_row(settings, token)
+    if not db_row:
+        return record
+
+    enriched = {**record}
+    db_metadata = db_row.get("metadata")
+    if isinstance(db_metadata, dict) and db_metadata:
+        api_metadata = enriched.get("metadata") or {}
+        enriched["metadata"] = {**api_metadata, **db_metadata}
+
+    for field in ("aliases", "config", "permissions", "model_max_budget", "model_spend"):
+        value = db_row.get(field)
+        if value not in (None, {}, []):
+            enriched.setdefault(field, value)
+
+    enriched["_db"] = db_row
+    return enriched
 
 
 @router.get("/keys/{key}")
 async def get_key(
     key: str,
     client: Annotated[LiteLLMClient, Depends(get_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
-    return await _find_key_record(client, key)
+    record = await _find_key_record(client, key)
+    return await _enrich_with_db(settings, record)
+
+
+@router.get("/router-settings")
+async def router_settings(
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    return await db_mod.fetch_router_settings(settings)
+
+
+@router.get("/_db/schema")
+async def db_schema(
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    return {"columns": await db_mod.list_tables(settings)}
 
 
 @router.post("/keys/update")

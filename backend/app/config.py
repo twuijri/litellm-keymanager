@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://litellm_app:4000"
     litellm_master_key: str
 
+    database_url: str | None = None
+
     admin_username: str = "admin"
     admin_password: str
 
