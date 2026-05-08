@@ -1,0 +1,41 @@
+services:
+  backend:
+    build: ./backend
+    container_name: keymanager_backend
+    restart: unless-stopped
+    environment:
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm_app:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    networks:
+      - keymanager_internal
+      - litellm_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: keymanager_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - keymanager_internal
+      - npm_default
+    expose:
+      - "80"
+
+networks:
+  keymanager_internal:
+    driver: bridge
+  litellm_internal:
+    external: true
+  npm_default:
+    external: true
