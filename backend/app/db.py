@@ -63,6 +63,19 @@ async def fetch_key_row(settings: Settings, token: str) -> dict[str, Any] | None
     return record
 
 
+async def fetch_token_by_alias(settings: Settings, alias: str) -> str | None:
+    pool = await get_pool(settings)
+    if not pool:
+        return None
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            'SELECT token FROM "LiteLLM_VerificationToken" '
+            'WHERE key_alias = $1 ORDER BY created_at DESC NULLS LAST LIMIT 1',
+            alias,
+        )
+    return row["token"] if row else None
+
+
 async def list_tables(settings: Settings) -> list[dict[str, Any]]:
     pool = await get_pool(settings)
     if not pool:

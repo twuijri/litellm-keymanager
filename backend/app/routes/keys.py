@@ -63,10 +63,10 @@ def _merge_metadata(existing: dict | None, fallbacks: list[FallbackEntry] | None
 
 
 async def _find_key_record(client: LiteLLMClient, key: str) -> dict:
-    # /key/list paginates; we walk pages until we find it.
+    # /key/list caps size at 100, so walk pages until we find it.
     page = 1
-    while True:
-        result = await client.list_keys(page=page, size=200, return_full_object=True)
+    while page <= 200:
+        result = await client.list_keys(page=page, size=100, return_full_object=True)
         keys = result.get("keys", []) if isinstance(result, dict) else result
         if not keys:
             raise HTTPException(status_code=404, detail="Key not found")
@@ -78,9 +78,10 @@ async def _find_key_record(client: LiteLLMClient, key: str) -> dict:
         total_pages = result.get("total_pages") if isinstance(result, dict) else None
         if total_pages and page >= total_pages:
             raise HTTPException(status_code=404, detail="Key not found")
-        if len(keys) < 200:
+        if len(keys) < 100:
             raise HTTPException(status_code=404, detail="Key not found")
         page += 1
+    raise HTTPException(status_code=404, detail="Key not found")
 
 
 # ---------- routes ----------
@@ -234,13 +235,32 @@ async def generate_key(
     return await client.generate_key(payload)
 
 
+async def _resolve_new_token(
+    client: LiteLLMClient,
+    settings: Settings,
+    new_key: Any,
+    alias: str | None,
+) -> str | None:
+    if isinstance(new_key, dict):
+        token = new_key.get("token")
+        if token:
+            return token
+    if alias:
+        return await db_mod.fetch_token_by_alias(settings, alias)
+    return None
+
+
 @router.post("/keys/regenerate")
 async def regenerate_key(
     body: KeyRegenerateRequest,
     client: Annotated[LiteLLMClient, Depends(get_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     record = await _find_key_record(client, body.key)
+    record = await _enrich_with_db(settings, record)
+
     metadata = dict(record.get("metadata") or {})
+    metadata.pop("fallbacks", None)  # fallbacks live in router_settings, not metadata
     payload: dict[str, Any] = {
         "models": record.get("models") or [],
         "metadata": metadata,
@@ -252,14 +272,22 @@ async def regenerate_key(
         payload["max_budget"] = record["max_budget"]
 
     new_key = await client.generate_key(payload)
+
+    # Copy router_settings (per-key fallbacks) to the new key's row before deleting old.
+    router_value = record.get("router_settings")
+    if isinstance(router_value, dict) and router_value:
+        new_token = await _resolve_new_token(client, settings, new_key, alias)
+        if new_token:
+            await db_mod.update_key_router_settings(settings, new_token, router_value)
+
     try:
         await client.delete_keys([record.get("token") or body.key])
     except HTTPException:
         # Roll back the new key if delete fails so we don't leave duplicates.
-        new_token = (new_key or {}).get("key") if isinstance(new_key, dict) else None
-        if new_token:
+        rollback_token = (new_key or {}).get("key") if isinstance(new_key, dict) else None
+        if rollback_token:
             try:
-                await client.delete_keys([new_token])
+                await client.delete_keys([rollback_token])
             except HTTPException:
                 pass
         raise
@@ -270,16 +298,30 @@ async def regenerate_key(
 async def clone_key(
     body: KeyCloneRequest,
     client: Annotated[LiteLLMClient, Depends(get_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     record = await _find_key_record(client, body.key)
+    record = await _enrich_with_db(settings, record)
+
+    metadata = dict(record.get("metadata") or {})
+    metadata.pop("fallbacks", None)
     payload: dict[str, Any] = {
         "key_alias": body.new_alias,
         "models": record.get("models") or [],
-        "metadata": dict(record.get("metadata") or {}),
+        "metadata": metadata,
     }
     if record.get("max_budget") is not None:
         payload["max_budget"] = record["max_budget"]
-    return await client.generate_key(payload)
+
+    new_key = await client.generate_key(payload)
+
+    router_value = record.get("router_settings")
+    if isinstance(router_value, dict) and router_value:
+        new_token = await _resolve_new_token(client, settings, new_key, body.new_alias)
+        if new_token:
+            await db_mod.update_key_router_settings(settings, new_token, router_value)
+
+    return new_key
 
 
 @router.post("/keys/delete")
