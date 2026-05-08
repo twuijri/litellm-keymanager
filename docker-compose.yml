@@ -1,5 +1,6 @@
 services:
   backend:
+    image: ghcr.io/twuijri/litellm-keymanager-backend:latest
     build: ./backend
     container_name: keymanager_backend
     restart: unless-stopped
@@ -21,6 +22,7 @@ services:
       retries: 3
 
   frontend:
+    image: ghcr.io/twuijri/litellm-keymanager-frontend:latest
     build: ./frontend
     container_name: keymanager_frontend
     restart: unless-stopped
