@@ -71,7 +71,7 @@ function SortableRow({ id, children }) {
   );
 }
 
-function FallbackChips({ items, onChange, available }) {
+function FallbackChips({ items, onChange, available, listId }) {
   const [draft, setDraft] = useState("");
 
   function addItem(value) {
@@ -114,7 +114,7 @@ function FallbackChips({ items, onChange, available }) {
           className="input"
           placeholder="Add fallback model"
           value={draft}
-          list="model-options"
+          list={listId}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -128,7 +128,7 @@ function FallbackChips({ items, onChange, available }) {
         </button>
       </div>
       {suggestions.length > 0 && (
-        <datalist id="model-options">
+        <datalist>
           {suggestions.map((m) => (
             <option key={m} value={m} />
           ))}
@@ -202,9 +202,20 @@ export default function FallbackEditor({ value, onChange, availableModels = [] }
 
   return (
     <div className="space-y-3">
+      <datalist id="model-options-all">
+        {(availableModels || []).map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-ink-300">
           Drag rows to reorder. Each row maps a primary model to an ordered fallback list.
+          {availableModels?.length > 0 && (
+            <span className="ml-1 text-ink-500">
+              ({availableModels.length} models available — click the input to see them)
+            </span>
+          )}
         </p>
         <button type="button" className="btn-secondary" onClick={add}>
           + Add row
@@ -228,7 +239,7 @@ export default function FallbackEditor({ value, onChange, availableModels = [] }
                     <input
                       className="input font-mono"
                       placeholder="gpt-4o"
-                      list="model-options"
+                      list="model-options-all"
                       value={e.primary}
                       onChange={(ev) => update(e._id, { primary: ev.target.value })}
                     />
@@ -239,6 +250,7 @@ export default function FallbackEditor({ value, onChange, availableModels = [] }
                       items={e.fallbacks}
                       onChange={(items) => update(e._id, { fallbacks: items })}
                       available={availableModels}
+                      listId="model-options-all"
                     />
                   </div>
                   <div className="flex items-end">
