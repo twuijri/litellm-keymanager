@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     litellm_base_url: str = "http://litellm_app:4000"
-    litellm_master_key: str
+    litellm_master_key: str | None = None
 
     database_url: str | None = None
 
