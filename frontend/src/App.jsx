@@ -6,6 +6,7 @@ import KeyEditor from "./components/KeyEditor.jsx";
 import NewKeyDialog from "./components/NewKeyDialog.jsx";
 import RevealKeyDialog from "./components/RevealKeyDialog.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import SettingsDialog from "./components/SettingsDialog.jsx";
 
 function extractKeys(payload) {
   if (Array.isArray(payload)) return payload;
@@ -36,6 +37,7 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [revealed, setRevealed] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -153,6 +155,9 @@ export default function App() {
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + New key
             </button>
+            <button className="btn-ghost" onClick={() => setShowSettings(true)} title="Settings">
+              Settings
+            </button>
             {user && (
               <span className="hidden text-xs text-ink-300 sm:inline">{user.username}</span>
             )}
@@ -204,6 +209,8 @@ export default function App() {
         title={revealed?.title}
         onClose={() => setRevealed(null)}
       />
+
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
 
       {confirm && (
         <ConfirmDialog

@@ -13,6 +13,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - keymanager_data:/data
     networks:
       - keymanager_internal
       - litellm_internal
@@ -34,6 +36,9 @@ services:
       - npm_default
     expose:
       - "80"
+
+volumes:
+  keymanager_data:
 
 networks:
   keymanager_internal:

@@ -71,4 +71,7 @@ export const api = {
     request("/api/keys/clone", { method: "POST", body: { key, new_alias: newAlias } }),
   deleteKey: (key) => request("/api/keys/delete", { method: "POST", body: { keys: [key] } }),
   models: () => request("/api/models"),
+  getSettings: () => request("/api/settings"),
+  saveSettings: (payload) => request("/api/settings", { method: "POST", body: payload }),
+  testDatabase: () => request("/api/settings/test-database", { method: "POST" }),
 };

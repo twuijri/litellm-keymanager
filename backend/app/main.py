@@ -7,6 +7,7 @@ from .auth import router as auth_router
 from .config import get_settings
 from . import db as db_mod
 from .routes.keys import router as keys_router
+from .routes.settings import router as settings_router
 
 settings = get_settings()
 
@@ -36,3 +37,4 @@ def health():
 
 app.include_router(auth_router)
 app.include_router(keys_router)
+app.include_router(settings_router)

@@ -1,5 +1,6 @@
-from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from . import settings_store
 
 
 class Settings(BaseSettings):
@@ -20,6 +21,26 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
 
 
-@lru_cache
+_cached_overrides: dict | None = None
+
+
+def _overrides() -> dict:
+    global _cached_overrides
+    if _cached_overrides is None:
+        _cached_overrides = settings_store.load()
+    return _cached_overrides
+
+
+def reload_overrides() -> None:
+    global _cached_overrides
+    _cached_overrides = settings_store.load()
+
+
 def get_settings() -> Settings:
-    return Settings()
+    base = Settings()
+    overrides = _overrides()
+    for key in settings_store.EDITABLE_KEYS:
+        value = overrides.get(key)
+        if value not in (None, ""):
+            setattr(base, key, value)
+    return base

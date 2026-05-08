@@ -29,6 +29,10 @@ async def close_pool() -> None:
         _pool = None
 
 
+async def reset_pool() -> None:
+    await close_pool()
+
+
 def _coerce_json(value: Any) -> Any:
     if value is None:
         return None
@@ -73,6 +77,25 @@ async def list_tables(settings: Settings) -> list[dict[str, Any]]:
             """
         )
     return [dict(r) for r in rows]
+
+
+async def update_key_router_settings(
+    settings: Settings, token: str, value: dict[str, Any]
+) -> bool:
+    pool = await get_pool(settings)
+    if not pool:
+        return False
+    payload = json.dumps(value)
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            'UPDATE "LiteLLM_VerificationToken" '
+            "SET router_settings = $1::jsonb "
+            "WHERE token = $2",
+            payload,
+            token,
+        )
+    # asyncpg returns "UPDATE n"; treat any successful execute as success
+    return result.startswith("UPDATE")
 
 
 async def fetch_router_settings(settings: Settings) -> dict[str, Any]:

@@ -110,23 +110,48 @@ async def list_keys(
         if current > 100:
             break
 
-    # Merge metadata from DB so per-key fallbacks stored there surface in the list.
-    pool_check = await db_mod.get_pool(get_settings())
+    # Merge router_settings/metadata from DB so per-key fallbacks surface in the list.
+    current_settings = get_settings()
+    pool_check = await db_mod.get_pool(current_settings)
     if pool_check:
-        for k in aggregated:
+        for i, k in enumerate(aggregated):
             if not isinstance(k, dict):
                 continue
             token = k.get("token") or k.get("key_name")
             if not token:
                 continue
-            db_row = await db_mod.fetch_key_row(get_settings(), token)
+            db_row = await db_mod.fetch_key_row(current_settings, token)
             if not db_row:
                 continue
-            db_metadata = db_row.get("metadata")
-            if isinstance(db_metadata, dict) and db_metadata:
-                k["metadata"] = {**(k.get("metadata") or {}), **db_metadata}
+            aggregated[i] = _merge_db_into_record(k, db_row)
 
     return {"keys": aggregated, "total_count": len(aggregated)}
+
+
+def _merge_db_into_record(record: dict, db_row: dict) -> dict:
+    enriched = {**record}
+
+    db_metadata = db_row.get("metadata")
+    if isinstance(db_metadata, dict) and db_metadata:
+        api_metadata = enriched.get("metadata") or {}
+        enriched["metadata"] = {**api_metadata, **db_metadata}
+
+    # Per-key fallbacks live in the router_settings column on LiteLLM_VerificationToken.
+    db_router = db_row.get("router_settings")
+    if isinstance(db_router, dict):
+        enriched["router_settings"] = db_router
+        fallbacks = db_router.get("fallbacks")
+        if isinstance(fallbacks, list):
+            metadata = enriched.get("metadata") or {}
+            metadata = {**metadata, "fallbacks": fallbacks}
+            enriched["metadata"] = metadata
+
+    for field in ("aliases", "config", "permissions", "model_max_budget", "model_spend"):
+        value = db_row.get(field)
+        if value not in (None, {}, []):
+            enriched.setdefault(field, value)
+
+    return enriched
 
 
 async def _enrich_with_db(settings: Settings, record: dict) -> dict:
@@ -136,20 +161,7 @@ async def _enrich_with_db(settings: Settings, record: dict) -> dict:
     db_row = await db_mod.fetch_key_row(settings, token)
     if not db_row:
         return record
-
-    enriched = {**record}
-    db_metadata = db_row.get("metadata")
-    if isinstance(db_metadata, dict) and db_metadata:
-        api_metadata = enriched.get("metadata") or {}
-        enriched["metadata"] = {**api_metadata, **db_metadata}
-
-    for field in ("aliases", "config", "permissions", "model_max_budget", "model_spend"):
-        value = db_row.get(field)
-        if value not in (None, {}, []):
-            enriched.setdefault(field, value)
-
-    enriched["_db"] = db_row
-    return enriched
+    return _merge_db_into_record(record, db_row)
 
 
 @router.get("/keys/{key}")
@@ -180,6 +192,7 @@ async def db_schema(
 async def update_key(
     body: KeyUpdateRequest,
     client: Annotated[LiteLLMClient, Depends(get_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     payload: dict[str, Any] = {"key": body.key}
     if body.key_alias is not None:
@@ -188,14 +201,21 @@ async def update_key(
         payload["models"] = body.models
     if body.max_budget is not None:
         payload["max_budget"] = body.max_budget
+    if body.metadata is not None:
+        payload["metadata"] = body.metadata
 
-    metadata = body.metadata
+    api_response = await client.update_key(payload)
+
+    # Write fallbacks straight to the router_settings column on the key row,
+    # which is where LiteLLM expects per-key fallbacks to live.
     if body.fallbacks is not None:
-        metadata = _merge_metadata(metadata, body.fallbacks)
-    if metadata is not None:
-        payload["metadata"] = metadata
+        router_value = {"fallbacks": _fallbacks_to_metadata(body.fallbacks)}
+        wrote = await db_mod.update_key_router_settings(settings, body.key, router_value)
+        if wrote:
+            if isinstance(api_response, dict):
+                api_response = {**api_response, "router_settings": router_value}
 
-    return await client.update_key(payload)
+    return api_response
 
 
 @router.post("/keys/generate")
